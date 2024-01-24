@@ -87,9 +87,9 @@ class ReplayMemory:
             terminal: A bool stating whether the episode terminated
         """
         if frame.shape != (self.frame_height, self.frame_width):
-            raise ValueError('Dimension of frame is wrong!')
+             raise ValueError('Dimension of frame is wrong!')
         self.actions[self.current] = action
-        self.frames[self.current, ...] = frame
+        # self.frames[self.current, ...] = frame
         self.rewards[self.current] = reward
         self.terminal_flags[self.current] = terminal
         mask = self.random_state.binomial(1, self.bernoulli_probability, self.num_heads)

@@ -14,9 +14,10 @@ import datetime
 import time
 from dqn_model import EnsembleNet, NetWithPrior
 from dqn_utils import seed_everything, write_info_file, generate_gif, save_checkpoint
-from env import Environment
+from env import NewEnvironment, Environment, EnvironemntAPI
 from replay import ReplayMemory
 import config
+from tqdm import tqdm
 
 def rolling_average(a, n=5) :
     if n == 0:
@@ -195,6 +196,7 @@ def ptlearn(states, actions, rewards, next_states, terminal_flags, masks):
 def train(step_number, last_save):
     """Contains the training and evaluation loops"""
     epoch_num = len(perf['steps'])
+    loop_status = tqdm(desc="Training ...", total=info['MAX_STEPS'])
     while step_number < info['MAX_STEPS']:
         ########################
         ####### Training #######
@@ -228,16 +230,18 @@ def train(step_number, last_save):
 
                 step_number += 1
                 epoch_frame += 1
+                loop_status.update(1)
                 episode_reward_sum += reward
                 state = next_state
 
                 if step_number % info['LEARN_EVERY_STEPS'] == 0 and step_number > info['MIN_HISTORY_TO_LEARN']:
+                    loop_status.write("Learning ...")
                     _states, _actions, _rewards, _next_states, _terminal_flags, _masks = replay_memory.get_minibatch(info['BATCH_SIZE'])
                     ptloss = ptlearn(_states, _actions, _rewards, _next_states, _terminal_flags, _masks)
                     ptloss_list.append(ptloss)
                 if step_number % info['TARGET_UPDATE'] == 0 and step_number >  info['MIN_HISTORY_TO_LEARN']:
-                    print("++++++++++++++++++++++++++++++++++++++++++++++++")
-                    print('updating target network at %s'%step_number)
+                    loop_status.write("++++++++++++++++++++++++++++++++++++++++++++++++")
+                    loop_status.write('updating target network at %s'%step_number)
                     target_net.load_state_dict(policy_net.state_dict())
 
             et = time.time()
@@ -294,7 +298,7 @@ def evaluate(step_number):
             episode_reward_sum += reward
             if not i:
                 # only save first episode
-                frames_for_gif.append(env.ale.getScreenRGB())
+                frames_for_gif.append(env.get_last_frame())
                 results_for_eval.append("%s, %s, %s, %s" %(action, reward, life_lost, terminal))
             if not episode_steps%100:
                 print('eval', episode_steps, episode_reward_sum)
@@ -336,7 +340,7 @@ if __name__ == '__main__':
         "LEARN_EVERY_STEPS":4, # updates every 4 steps in osband
         "BERNOULLI_PROBABILITY": 0.9, # Probability of experience to go to each head - if 1, every experience goes to every head
         "TARGET_UPDATE":10000, # how often to update target network
-        "MIN_HISTORY_TO_LEARN":50000, # in environment frames
+        "MIN_HISTORY_TO_LEARN":5000, # in environment frames
         "NORM_BY":255.,  # divide the float(of uint) by this number to normalize - max val of data is 255
         "EPS_INITIAL":1.0, # should be 1
         "EPS_FINAL":0.01, # 0.01 in osband
@@ -347,7 +351,7 @@ if __name__ == '__main__':
         "NUM_EVAL_EPISODES":1, # num examples to average in eval
         "BUFFER_SIZE":int(1e6), # Buffer size for experience replay
         "CHECKPOINT_EVERY_STEPS":500000, # how often to write pkl of model and npz of data buffer
-        "EVAL_FREQUENCY":250000, # how often to run evaluation episodes
+        "EVAL_FREQUENCY":2500, # how often to run evaluation episodes
         "ADAM_LEARNING_RATE":6.25e-5,
         "RMS_LEARNING_RATE": 0.00025, # according to paper = 0.00025
         "RMS_DECAY":0.95,
@@ -364,7 +368,7 @@ if __name__ == '__main__':
         "RANDOM_HEAD":-1, # just used in plotting as demarcation
         "NETWORK_INPUT_SIZE":(84,84),
         "START_TIME":time.time(),
-        "MAX_STEPS":int(50e6), # 50e6 steps is 200e6 frames
+        "MAX_STEPS":int(50e4), # 50e6 steps is 200e6 frames
         "MAX_EPISODE_STEPS":27000, # Orig dqn give 18k steps, Rainbow seems to give 27k steps
         "FRAME_SKIP":4, # deterministic frame skips to match deepmind
         "MAX_NO_OP_FRAMES":30, # random number of noops applied to beginning of each episode
@@ -377,9 +381,12 @@ if __name__ == '__main__':
     info['NORM_BY'] = float(info['NORM_BY'])
 
     # create environment
-    env = Environment(rom_file=info['GAME'], frame_skip=info['FRAME_SKIP'],
-                      num_frames=info['HISTORY_SIZE'], no_op_start=info['MAX_NO_OP_FRAMES'], rand_seed=info['SEED'],
-                      dead_as_end=info['DEAD_AS_END'], max_episode_steps=info['MAX_EPISODE_STEPS'])
+    if False:
+        env: EnvironemntAPI = Environment(rom_file=info['GAME'], frame_skip=info['FRAME_SKIP'],
+                        num_frames=info['HISTORY_SIZE'], no_op_start=info['MAX_NO_OP_FRAMES'], rand_seed=info['SEED'],
+                        dead_as_end=info['DEAD_AS_END'], max_episode_steps=info['MAX_EPISODE_STEPS'])
+    else:
+        env: EnvironemntAPI = NewEnvironment()
 
     # create replay buffer
     replay_memory = ReplayMemory(size=info['BUFFER_SIZE'],
@@ -400,6 +407,7 @@ if __name__ == '__main__':
                                  replay_memory_start_size=info['MIN_HISTORY_TO_LEARN'],
                                  max_steps=info['MAX_STEPS'])
 
+    print(f"Model path: {args.model_loadpath}")
     if args.model_loadpath != '':
         # load data from loadpath - save model load for later. we need some of
         # these parameters to setup other things

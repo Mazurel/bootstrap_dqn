@@ -1,8 +1,14 @@
 import os
 from collections import deque
+from abc import ABC
+from typing import NamedTuple, TypeVar, Generic
+
 import numpy as np
 from atari_py.ale_python_interface import ALEInterface
 import cv2
+import gymnasium as gym
+from gymnasium.spaces import utils as space
+import flappy_bird_env
 
 #from skimage.transform import resize
 #from skimage.color import rgb2gray
@@ -13,8 +19,69 @@ import cv2
 # opencv is ~3x faster than skimage
 def cv_preprocess_frame(observ, output_size):
     gray = cv2.cvtColor(observ, cv2.COLOR_RGB2GRAY)
-    output = cv2.resize(gray, (output_size, output_size), interpolation=cv2.INTER_NEAREST)
+    output = cv2.resize(gray, (output_size, output_size, ))
     return output
+
+
+T = TypeVar("T")
+
+
+class StepResult(NamedTuple, Generic[T]):
+    state: T
+    reward: float
+    lives_dead: bool
+    end: bool
+
+
+class EnvironemntAPI(ABC, Generic[T]):
+    @property
+    def num_actions(self) -> int:
+        ...
+
+    def reset(self) -> T:
+        ...
+
+    def step(self, action_idx: int) -> StepResult[T]:
+        ...
+
+
+class NewEnvironment(EnvironemntAPI[np.ndarray]):
+    def __init__(self, frame_size: int = 84, num_frames: int = 4, show: bool = True) -> None:
+        self.gym = gym.make("FlappyBird-v0", render_mode="human") if show else gym.make("FlappyBird-v0")
+        self.frame_size = frame_size
+        self.num_frames = num_frames
+        self.frame_queue = deque(maxlen=num_frames)
+        self.last_frame = None
+
+    @property
+    def num_actions(self) -> int:
+        return 2
+
+    def get_last_frame(self):
+        return self.last_frame
+
+    def fill_frame_queue_with_zeros(self):
+        self.frame_queue.clear()
+        for _ in range(self.num_frames):
+            self.frame_queue.append(np.zeros((self.frame_size, self.frame_size)))
+
+    def get_update_frames(self, new_frame: np.ndarray):
+        frame = cv_preprocess_frame(new_frame, self.frame_size)
+        frame = np.moveaxis(frame, -1, 0)
+        frame = np.squeeze(frame)
+        self.frame_queue.append(frame)
+        return np.array(self.frame_queue)
+
+    def reset(self):
+        self.fill_frame_queue_with_zeros()
+        frame, *_ = self.gym.reset()
+        self.last_frame = frame
+        return self.get_update_frames(frame)
+
+    def step(self, action_idx: int):
+        frame, reward, terminated, end, _ = self.gym.step(np.array([action_idx]))
+        self.last_frame = frame
+        return self.get_update_frames(frame), reward, end, terminated
 
 class Environment(object):
     def __init__(self,
