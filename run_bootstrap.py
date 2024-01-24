@@ -235,7 +235,6 @@ def train(step_number, last_save):
                 state = next_state
 
                 if step_number % info['LEARN_EVERY_STEPS'] == 0 and step_number > info['MIN_HISTORY_TO_LEARN']:
-                    loop_status.write("Learning ...")
                     _states, _actions, _rewards, _next_states, _terminal_flags, _masks = replay_memory.get_minibatch(info['BATCH_SIZE'])
                     ptloss = ptlearn(_states, _actions, _rewards, _next_states, _terminal_flags, _masks)
                     ptloss_list.append(ptloss)
