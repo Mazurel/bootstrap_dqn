@@ -46,7 +46,8 @@ class EnvironemntAPI(ABC, Generic[T]):
 
 
 class NewEnvironment(EnvironemntAPI[np.ndarray]):
-    def __init__(self, frame_size: int = 84, num_frames: int = 4, show: bool = False) -> None:
+    def __init__(self, frame_size: int = 84, num_frames: int = 4, show: bool = True) -> None:
+        os.environ["SDL_VIDEODRIVER"] = "dummy"
         self.gym = gym.make("FlappyBird-v0", render_mode="human") if show else gym.make("FlappyBird-v0", render_mode="rgb_array")
         self.frame_size = frame_size
         self.num_frames = num_frames
